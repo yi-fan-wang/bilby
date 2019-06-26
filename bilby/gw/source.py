@@ -260,6 +260,8 @@ def _base_lal_cbc_fd_waveform(
     lalsim_SimInspiralWaveformParamsInsertTidalLambda2(
         waveform_dictionary, lambda_2)
 
+    lalsim.SimInspiralWaveformParamsInsertNonGRDChi2(waveform_dictionary,10.0)
+
     if lalsim.SimInspiralImplementedFDApproximants(approximant):
         wf_func = lalsim_SimInspiralChooseFDWaveform
     else:

@@ -10,6 +10,7 @@ from .utils import (lalsim_GetApproximantFromString,
                     lalsim_SimInspiralChooseFDWaveform,
                     lalsim_SimInspiralWaveformParamsInsertTidalLambda1,
                     lalsim_SimInspiralWaveformParamsInsertTidalLambda2,
+                    lalsim_SimInspiralWaveformParamsInsertNonGRDChi2,
                     lalsim_SimInspiralChooseFDWaveformSequence)
 
 try:
@@ -167,10 +168,60 @@ def lal_eccentric_binary_black_hole_no_spins(
         eccentricity=eccentricity, **waveform_kwargs)
 
 
+def lal_nonGR_binary_black_hole(
+        frequency_array, mass_1, mass_2, luminosity_distance, a_1, tilt_1,
+        phi_12, a_2, tilt_2, phi_jl, theta_jn, phase, dchi_2, **kwargs):
+    """ A Binary Black Hole waveform model using lalsimulation
+
+    Parameters
+    ----------
+    frequency_array: array_like
+        The frequencies at which we want to calculate the strain
+    mass_1: float
+        The mass of the heavier object in solar masses
+    mass_2: float
+        The mass of the lighter object in solar masses
+    luminosity_distance: float
+        The luminosity distance in megaparsec
+    a_1: float
+        Dimensionless primary spin magnitude
+    tilt_1: float
+        Primary tilt angle
+    phi_12: float
+        Azimuthal angle between the two component spins
+    a_2: float
+        Dimensionless secondary spin magnitude
+    tilt_2: float
+        Secondary tilt angle
+    phi_jl: float
+        Azimuthal angle between the total binary angular momentum and the
+        orbital angular momentum
+    theta_jn: float
+        Angle between the total binary angular momentum and the line of sight
+    phase: float
+        The phase at coalescence
+    kwargs: dict
+        Optional keyword arguments
+
+    Returns
+    -------
+    dict: A dictionary with the plus and cross polarisation strain modes
+    """
+    waveform_kwargs = dict(
+        waveform_approximant='IMRPhenomPv2', reference_frequency=50.0,
+        minimum_frequency=20.0, maximum_frequency=frequency_array[-1],
+        pn_spin_order=-1, pn_tidal_order=-1, pn_phase_order=-1, pn_amplitude_order=0)
+    waveform_kwargs.update(kwargs)
+    return _base_lal_cbc_fd_waveform(
+        frequency_array=frequency_array, mass_1=mass_1, mass_2=mass_2,
+        luminosity_distance=luminosity_distance, theta_jn=theta_jn, phase=phase,
+        a_1=a_1, a_2=a_2, tilt_1=tilt_1, tilt_2=tilt_2, phi_12=phi_12,
+        phi_jl=phi_jl, dchi_2 = dchi_2, **waveform_kwargs)
+
 def _base_lal_cbc_fd_waveform(
         frequency_array, mass_1, mass_2, luminosity_distance, theta_jn, phase,
         a_1=0.0, a_2=0.0, tilt_1=0.0, tilt_2=0.0, phi_12=0.0, phi_jl=0.0,
-        lambda_1=0.0, lambda_2=0.0, eccentricity=0.0, **waveform_kwargs):
+        lambda_1=0.0, lambda_2=0.0, dchi_2 = 0.0, eccentricity=0.0, **waveform_kwargs):
     """ Generate a cbc waveform model using lalsimulation
 
     Parameters
@@ -260,7 +311,9 @@ def _base_lal_cbc_fd_waveform(
     lalsim_SimInspiralWaveformParamsInsertTidalLambda2(
         waveform_dictionary, lambda_2)
 
-    lalsim.SimInspiralWaveformParamsInsertNonGRDChi2(waveform_dictionary,10.0)
+    #For testing GR:
+    lalsim_SimInspiralWaveformParamsInsertNonGRDChi2(
+        waveform_dictionary, dchi_2)
 
     if lalsim.SimInspiralImplementedFDApproximants(approximant):
         wf_func = lalsim_SimInspiralChooseFDWaveform

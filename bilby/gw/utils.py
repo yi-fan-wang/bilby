@@ -867,6 +867,15 @@ def lalsim_SimInspiralWaveformParamsInsertTidalLambda2(
     return lalsim.SimInspiralWaveformParamsInsertTidalLambda2(
         waveform_dictionary, lambda_2)
 
+def lalsim_SimInspiralWaveformParamsInsertNonGRDChi2(
+        waveform_dictionary, dchi_2):
+    try:
+        dchi_2 = float(dchi_2)
+    except ValueError:
+        raise ValueError("Unable to convert dchi_2 to float")
+
+    return lalsim.SimInspiralWaveformParamsInsertNonGRDChi2(
+        waveform_dictionary,dchi_2)
 
 def spline_angle_xform(delta_psi):
     """

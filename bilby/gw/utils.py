@@ -877,6 +877,16 @@ def lalsim_SimInspiralWaveformParamsInsertNonGRDChi2(
     return lalsim.SimInspiralWaveformParamsInsertNonGRDChi2(
         waveform_dictionary,dchi_2)
 
+def lalsim_SimInspiralWaveformParamsInsertNonGRDChi3(
+        waveform_dictionary, dchi_3):
+    try:
+        dchi_3 = float(dchi_3)
+    except ValueError:
+        raise ValueError("Unable to convert dchi_3 to float")
+
+    return lalsim.SimInspiralWaveformParamsInsertNonGRDChi3(
+        waveform_dictionary,dchi_3)
+
 def spline_angle_xform(delta_psi):
     """
     Returns the angle in degrees corresponding to the spline

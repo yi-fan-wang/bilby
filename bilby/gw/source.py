@@ -12,6 +12,7 @@ from .utils import (lalsim_GetApproximantFromString,
                     lalsim_SimInspiralWaveformParamsInsertTidalLambda2,
                     lalsim_SimInspiralWaveformParamsInsertNonGRDChi2,
                     lalsim_SimInspiralWaveformParamsInsertNonGRDChi3,
+                    lalsim_SimInspiralWaveformParamsInsertNonGRDAlpha2,
                     lalsim_SimInspiralChooseFDWaveformSequence)
 
 try:
@@ -171,7 +172,7 @@ def lal_eccentric_binary_black_hole_no_spins(
 
 def lal_nonGR_binary_black_hole(
         frequency_array, mass_1, mass_2, luminosity_distance, a_1, tilt_1,
-        phi_12, a_2, tilt_2, phi_jl, theta_jn, phase, dchi_2, dchi_3, **kwargs):
+        phi_12, a_2, tilt_2, phi_jl, theta_jn, phase, dchi_2, dchi_3, dalpha_2, **kwargs):
     """ A Binary Black Hole waveform model using lalsimulation
 
     Parameters
@@ -217,12 +218,12 @@ def lal_nonGR_binary_black_hole(
         frequency_array=frequency_array, mass_1=mass_1, mass_2=mass_2,
         luminosity_distance=luminosity_distance, theta_jn=theta_jn, phase=phase,
         a_1=a_1, a_2=a_2, tilt_1=tilt_1, tilt_2=tilt_2, phi_12=phi_12,
-        phi_jl=phi_jl, dchi_2 = dchi_2, dchi_3 = dchi_3, **waveform_kwargs)
+        phi_jl=phi_jl, dchi_2 = dchi_2, dchi_3 = dchi_3, dalpha_2 = dalpha_2, **waveform_kwargs)
 
 def _base_lal_cbc_fd_waveform(
         frequency_array, mass_1, mass_2, luminosity_distance, theta_jn, phase,
         a_1=0.0, a_2=0.0, tilt_1=0.0, tilt_2=0.0, phi_12=0.0, phi_jl=0.0,
-        lambda_1=0.0, lambda_2=0.0, eccentricity=0.0, dchi_2 = 0.0, dchi_3 = 0.0, **waveform_kwargs):
+        lambda_1=0.0, lambda_2=0.0, eccentricity=0.0, dchi_2 = 0.0, dchi_3 = 0.0, dalpha_2 = 0.0, **waveform_kwargs):
     """ Generate a cbc waveform model using lalsimulation
 
     Parameters
@@ -317,6 +318,8 @@ def _base_lal_cbc_fd_waveform(
         waveform_dictionary, dchi_2)
     lalsim_SimInspiralWaveformParamsInsertNonGRDChi3(
         waveform_dictionary, dchi_3)
+    lalsim_SimInspiralWaveformParamsInsertNonGRDAlpha2(
+        waveform_dictionary, dalpha_2)
 
     if lalsim.SimInspiralImplementedFDApproximants(approximant):
         wf_func = lalsim_SimInspiralChooseFDWaveform

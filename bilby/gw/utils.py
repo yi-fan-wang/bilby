@@ -867,6 +867,7 @@ def lalsim_SimInspiralWaveformParamsInsertTidalLambda2(
     return lalsim.SimInspiralWaveformParamsInsertTidalLambda2(
         waveform_dictionary, lambda_2)
 
+# The non-GR Injection functions inheritted from lalsim
 def lalsim_SimInspiralWaveformParamsInsertNonGRDChi2(
         waveform_dictionary, dchi_2):
     try:
@@ -886,6 +887,16 @@ def lalsim_SimInspiralWaveformParamsInsertNonGRDChi3(
 
     return lalsim.SimInspiralWaveformParamsInsertNonGRDChi3(
         waveform_dictionary,dchi_3)
+
+def lalsim_SimInspiralWaveformParamsInsertNonGRDAlpha2(
+        waveform_dictionary, dalpha_2):
+    try:
+        dalpha_2 = float(dalpha_2)
+    except ValueError:
+        raise ValueError("Unable to convert dalpha_2 to float")
+
+    return lalsim.SimInspiralWaveformParamsInsertNonGRDAlpha2(
+        waveform_dictionary,dalpha_2)
 
 def spline_angle_xform(delta_psi):
     """

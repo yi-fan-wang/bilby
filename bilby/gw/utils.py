@@ -898,6 +898,16 @@ def lalsim_SimInspiralWaveformParamsInsertNonGRDAlpha2(
     return lalsim.SimInspiralWaveformParamsInsertNonGRDAlpha2(
         waveform_dictionary,dalpha_2)
 
+def lalsim_SimInspiralWaveformParamsInsertNonGRMassiveGravitonLambda(
+            waveform_dictionary, mg_lambda):
+    try:
+        mg_lambda = float(mg_lambda)
+    except ValueError:
+        raise ValueError("Unable to convert mg_lambda to float")
+
+    return lalsim.SimInspiralWaveformParamsInsertNonGRMassiveGravitonLambda(
+        waveform_dictionary,mg_lambda)
+
 def spline_angle_xform(delta_psi):
     """
     Returns the angle in degrees corresponding to the spline

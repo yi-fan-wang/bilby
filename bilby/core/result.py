@@ -18,8 +18,8 @@ from scipy.special import logsumexp
 
 from . import utils
 from .utils import (logger, infer_parameters_from_function,
-                    check_directory_exists_and_if_not_mkdir,
-                    BilbyJsonEncoder, decode_bilby_json)
+                    check_directory_exists_and_if_not_mkdir,)
+from .utils import BilbyJsonEncoder, decode_bilby_json
 from .prior import Prior, PriorDict, DeltaFunction
 
 
@@ -43,9 +43,9 @@ def result_file_name(outdir, label, extension='json', gzip=False):
     """
     if extension in ['json', 'hdf5']:
         if extension == 'json' and gzip:
-            return '{}/{}_result.{}.gz'.format(outdir, label, extension)
+            return os.path.join(outdir, '{}_result.{}.gz'.format(label, extension))
         else:
-            return '{}/{}_result.{}'.format(outdir, label, extension)
+            return os.path.join(outdir, '{}_result.{}'.format(label, extension))
     else:
         raise ValueError("Extension type {} not understood".format(extension))
 
@@ -264,12 +264,6 @@ class Result(object):
             else:
                 with open(filename, 'r') as file:
                     dictionary = json.load(file, object_hook=decode_bilby_json)
-            for key in dictionary.keys():
-                # Convert the loaded priors to bilby prior type
-                if key == 'priors':
-                    for param in dictionary[key].keys():
-                        dictionary[key][param] = str(dictionary[key][param])
-                    dictionary[key] = PriorDict(dictionary[key])
             try:
                 return cls(**dictionary)
             except TypeError as e:
@@ -467,8 +461,6 @@ class Result(object):
 
         # Convert the prior to a string representation for saving on disk
         dictionary = self._get_save_data_dictionary()
-        if dictionary.get('priors', False):
-            dictionary['priors'] = {key: str(self.priors[key]) for key in self.priors}
 
         # Convert callable sampler_kwargs to strings
         if dictionary.get('sampler_kwargs', None) is not None:
@@ -478,6 +470,7 @@ class Result(object):
 
         try:
             if extension == 'json':
+                dictionary["priors"] = dictionary["priors"]._get_json_dict()
                 if gzip:
                     import gzip
                     # encode to a string
@@ -499,11 +492,44 @@ class Result(object):
             logger.error("\n\n Saving the data has failed with the "
                          "following message:\n {} \n\n".format(e))
 
-    def save_posterior_samples(self, outdir=None):
-        """Saves posterior samples to a file"""
-        outdir = self._safe_outdir_creation(outdir, self.save_posterior_samples)
-        filename = '{}/{}_posterior_samples.txt'.format(outdir, self.label)
-        self.posterior.to_csv(filename, index=False, header=True)
+    def save_posterior_samples(self, filename=None, outdir=None, label=None):
+        """ Saves posterior samples to a file
+
+        Generates a .dat file containing the posterior samples and auxillary
+        data saved in the posterior. Note, strings in the posterior are
+        removed while complex numbers will be given as absolute values with
+        abs appended to the column name
+
+        Parameters
+        ----------
+        filename: str
+            Alternative filename to use. Defaults to
+            outdir/label_posterior_samples.dat
+        outdir, label: str
+            Alternative outdir and label to use
+
+        """
+        if filename is None:
+            if label is None:
+                label = self.label
+            outdir = self._safe_outdir_creation(outdir, self.save_posterior_samples)
+            filename = '{}/{}_posterior_samples.dat'.format(outdir, label)
+        else:
+            outdir = os.path.dirname(filename)
+            self._safe_outdir_creation(outdir, self.save_posterior_samples)
+
+        # Drop non-numeric columns
+        df = self.posterior.select_dtypes([np.number]).copy()
+
+        # Convert complex columns to abs
+        for key in df.keys():
+            if np.any(np.iscomplex(df[key])):
+                complex_term = df.pop(key)
+                df.loc[:, key + "_abs"] = np.abs(complex_term)
+                df.loc[:, key + "_angle"] = np.angle(complex_term)
+
+        logger.info("Writing samples file to {}".format(filename))
+        df.to_csv(filename, index=False, header=True, sep=' ')
 
     def get_latex_labels_from_parameter_keys(self, keys):
         """ Returns a list of latex_labels corresponding to the given keys
@@ -679,7 +705,10 @@ class Result(object):
 
         if isinstance(prior, Prior):
             theta = np.linspace(ax.get_xlim()[0], ax.get_xlim()[1], 300)
-            ax.plot(theta, prior.prob(theta), color='C2')
+            if cumulative is False:
+                ax.plot(theta, prior.prob(theta), color='C2')
+            else:
+                ax.plot(theta, prior.cdf(theta), color='C2')
 
         if save:
             fig.tight_layout()
@@ -808,6 +837,12 @@ class Result(object):
             python module, see https://corner.readthedocs.io for more
             information.
 
+            Truth-lines can be passed in in several ways. Either as the values
+            of the parameters dict, or a list via the `truths` kwarg. If
+            injection_parameters where given to run_sampler, these will auto-
+            matically be added to the plot. This behaviour can be stopped by
+            adding truths=False.
+
         Returns
         -------
         fig:
@@ -843,7 +878,7 @@ class Result(object):
         # Handle if truths was passed in
         if 'truth' in kwargs:
             kwargs['truths'] = kwargs.pop('truth')
-        if kwargs.get('truths'):
+        if "truths" in kwargs:
             truths = kwargs.get('truths')
             if isinstance(parameters, list) and isinstance(truths, list):
                 if len(parameters) != len(truths):
@@ -851,6 +886,10 @@ class Result(object):
                         "Length of parameters and truths don't match")
             elif isinstance(truths, dict) and parameters is None:
                 parameters = kwargs.pop('truths')
+            elif isinstance(truths, bool):
+                pass
+            elif truths is None:
+                kwargs["truths"] = False
             else:
                 raise ValueError(
                     "Combination of parameters and truths not understood")
@@ -859,7 +898,8 @@ class Result(object):
         # but do not overwrite input parameters (or truths)
         cond1 = getattr(self, 'injection_parameters', None) is not None
         cond2 = parameters is None
-        if cond1 and cond2:
+        cond3 = bool(kwargs.get("truths", True))
+        if cond1 and cond2 and cond3:
             parameters = {key: self.injection_parameters[key] for key in
                           self.search_parameter_keys}
 
@@ -881,6 +921,10 @@ class Result(object):
         # Unless already set, set the range to include all samples
         # This prevents ValueErrors being raised for parameters with no range
         kwargs['range'] = kwargs.get('range', [1] * len(plot_parameter_keys))
+
+        # Remove truths if it is a bool
+        if isinstance(kwargs.get('truths'), bool):
+            kwargs.pop('truths')
 
         # Create the data array to plot and pass everything to corner
         xs = self.posterior[plot_parameter_keys].values
@@ -1109,7 +1153,7 @@ class Result(object):
                              "Cannot compute credible levels.")
         credible_levels = {key: self.get_injection_credible_level(key)
                            for key in keys
-                           if isinstance(self.injection_parameters[key], float)}
+                           if isinstance(self.injection_parameters.get(key, None), float)}
         return credible_levels
 
     def get_injection_credible_level(self, parameter):
@@ -1274,7 +1318,7 @@ class ResultList(list):
         results: list
             A list of `:class:`bilby.core.result.Result`.
         """
-        list.__init__(self)
+        super(ResultList, self).__init__()
         for result in results:
             self.append(result)
 
@@ -1317,7 +1361,7 @@ class ResultList(list):
         self.check_consistent_priors()
 
         # check which kind of sampler was used: MCMC or Nested Sampling
-        if result.nested_samples is not None:
+        if result._nested_samples is not None:
             posteriors, result = self._combine_nested_sampled_runs(result)
         else:
             posteriors = [res.posterior for res in self]
@@ -1327,21 +1371,41 @@ class ResultList(list):
         return result
 
     def _combine_nested_sampled_runs(self, result):
+        """
+        Combine multiple nested sampling runs.
+
+        Currently this keeps posterior samples from each run in proportion with
+        the evidence for each individual run
+
+        Parameters
+        ----------
+        result: bilby.core.result.Result
+            The result object to put the new samples in.
+
+        Returns
+        -------
+        posteriors: list
+            A list of pandas DataFrames containing the reduced sample set from
+            each run.
+        result: bilby.core.result.Result
+            The result object with the combined evidences.
+        """
         self.check_nested_samples()
-        log_evidences = np.array([res.log_evidence for res in self])
-        result.log_evidence = logsumexp(log_evidences, b=1. / len(self))
         if result.use_ratio:
-            result.log_bayes_factor = result.log_evidence
-            result.log_evidence = result.log_evidence + result.log_noise_evidence
+            log_bayes_factors = np.array([res.log_bayes_factor for res in self])
+            result.log_bayes_factor = logsumexp(log_bayes_factors, b=1. / len(self))
+            result.log_evidence = result.log_bayes_factor + result.log_noise_evidence
+            result_weights = np.exp(log_bayes_factors - np.max(log_bayes_factors))
         else:
-            result.log_bayes_factor = result.log_evidence - result.log_noise_evidence
+            log_evidences = np.array([res.log_evidence for res in self])
+            result.log_evidence = logsumexp(log_evidences, b=1. / len(self))
+            result_weights = np.exp(log_evidences - np.max(log_evidences))
         log_errs = [res.log_evidence_err for res in self if np.isfinite(res.log_evidence_err)]
         if len(log_errs) > 0:
             result.log_evidence_err = logsumexp(2 * np.array(log_errs), b=1. / len(self))
         else:
             result.log_evidence_err = np.nan
-        result_weights = np.exp(log_evidences - np.max(log_evidences))
-        posteriors = []
+        posteriors = list()
         for res, frac in zip(self, result_weights):
             selected_samples = (np.random.uniform(size=len(res.posterior)) < frac)
             posteriors.append(res.posterior[selected_samples])

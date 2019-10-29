@@ -6,9 +6,12 @@ from math import fmod
 import argparse
 import traceback
 import inspect
+import types
 import subprocess
-import json
 import multiprocessing
+from importlib import import_module
+import json
+import warnings
 
 import numpy as np
 from scipy.interpolate import interp2d
@@ -17,29 +20,50 @@ import pandas as pd
 
 logger = logging.getLogger('bilby')
 
-
-# Constants: values taken from astropy v3.0.4
+# Constants: values taken from LAL cd65f38ce43cef3a1dec217c060de25caf99bf14
 speed_of_light = 299792458.0  # m/s
-parsec = 3.0856775814671916e+16  # m
-solar_mass = 1.9884754153381438e+30  # Kg
-radius_of_earth = 6378100.0  # m
+parsec = 3.085677581491367e+16  # m
+solar_mass = 1.9885469549614615e+30  # Kg
+radius_of_earth = 6378136.6  # m
 
 _TOL = 14
 
 
 def infer_parameters_from_function(func):
     """ Infers the arguments of a function
-        (except the first arg which is assumed to be the dep. variable).
+    (except the first arg which is assumed to be the dep. variable).
 
-        Throws out *args and **kwargs type arguments
+    Throws out *args and **kwargs type arguments
 
-        Can deal with type hinting!
+    Can deal with type hinting!
 
-        Returns
-        ---------
-        list: A list of strings with the parameters
+    Parameters
+    ----------
+    func: function or method
+       The function or method for which the parameters should be inferred.
+
+    Returns
+    -------
+    list: A list of strings with the parameters
+
+    Raises
+    ------
+    ValueError
+       If the object passed to the function is neither a function nor a method.
+
+    Notes
+    -----
+    In order to handle methods the ``type`` of the function is checked, and
+    if a method has been passed the first *two* arguments are removed rather than just the first one.
+    This allows the reference to the instance (conventionally named ``self``)
+    to be removed.
     """
-    return _infer_args_from_function_except_for_first_arg(func=func)
+    if isinstance(func, types.MethodType):
+        return _infer_args_from_function_except_n_args(func=func, n=2)
+    elif isinstance(func, types.FunctionType):
+        return _infer_args_from_function_except_for_first_arg(func=func)
+    else:
+        raise ValueError("This doesn't look like a function.")
 
 
 def infer_args_from_method(method):
@@ -53,16 +77,56 @@ def infer_args_from_method(method):
     ---------
     list: A list of strings with the parameters
     """
-    return _infer_args_from_function_except_for_first_arg(func=method)
+    return _infer_args_from_function_except_n_args(func=method, n=1)
 
 
-def _infer_args_from_function_except_for_first_arg(func):
+def _infer_args_from_function_except_n_args(func, n=1):
+    """ Inspects a function to find its arguments, and ignoring the
+    first n of these, returns a list of arguments from the function's
+    signature.
+
+    Parameters
+    ----------
+    func : function or method
+       The function from which the arguments should be inferred.
+    n : int
+       The number of arguments which should be ignored, staring at the beginning.
+
+    Returns
+    -------
+    parameters: list
+       A list of parameters of the function, omitting the first ``n``.
+
+    Extended Summary
+    ----------------
+    This function is intended to allow the handling of named arguments
+    in both functions and methods; this is important, since the first
+    argument of an instance method will be the instance.
+
+    See Also
+    --------
+    infer_args_from_method: Provides the arguments for a method
+    infer_args_from_function: Provides the arguments for a function
+    infer_args_from_function_except_first_arg: Provides all but first argument of a function or method.
+
+    Examples
+    --------
+    >>> def hello(a, b, c, d):
+    >>>     pass
+    >>>
+    >>> _infer_args_from_function_except_n_args(hello, 2)
+    ['c', 'd']
+    """
     try:
         parameters = inspect.getfullargspec(func).args
     except AttributeError:
         parameters = inspect.getargspec(func).args
-    parameters.pop(0)
+    del(parameters[:n])
     return parameters
+
+
+def _infer_args_from_function_except_for_first_arg(func):
+    return _infer_args_from_function_except_n_args(func=func, n=1)
 
 
 def get_sampling_frequency(time_array):
@@ -253,6 +317,10 @@ def gps_time_to_gmst(gps_time):
     float: Greenwich mean sidereal time in radians
 
     """
+    warnings.warn(
+        "Function gps_time_to_gmst deprecated, use "
+        "lal.GreenwichMeanSiderealTime(time) instead",
+        DeprecationWarning)
     omega_earth = 2 * np.pi * (1 / 365.2425 + 1) / 86400.
     gps_2000 = 630720013.
     gmst_2000 = (6 + 39. / 60 + 51.251406103947375 / 3600) * np.pi / 12
@@ -858,10 +926,6 @@ class UnsortedInterp2d(interp2d):
     def __call__(self, x, y, dx=0, dy=0, assume_sorted=False):
         """  Wrapper to scipy.interpolate.interp2d which preserves the input ordering.
 
-        See https://stackoverflow.com/questions/44941271/scipy-interp2d-returned-function-sorts-input-argument-automatically-and-undesira
-        for the implementation details.
-
-
         Parameters
         ----------
         x: See superclass
@@ -878,13 +942,13 @@ class UnsortedInterp2d(interp2d):
 
         """
         unsorted_idxs = np.argsort(np.argsort(x))
-        return interp2d.__call__(self, x, y, dx=dx, dy=dy, assume_sorted=False)[unsorted_idxs]
+        return super(UnsortedInterp2d, self).__call__(x, y, dx=dx, dy=dy, assume_sorted=False)[unsorted_idxs]
 
 
 #  Instantiate the default argument parser at runtime
 command_line_args, command_line_parser = set_up_command_line_arguments()
 #  Instantiate the default logging
-setup_logger(print_version=True, log_level=command_line_args.log_level)
+setup_logger(print_version=False, log_level=command_line_args.log_level)
 
 if 'DISPLAY' in os.environ:
     logger.debug("DISPLAY={} environment found".format(os.environ['DISPLAY']))
@@ -907,25 +971,137 @@ else:
 
 
 class BilbyJsonEncoder(json.JSONEncoder):
+
     def default(self, obj):
+        from .prior import MultivariateGaussianDist, Prior, PriorDict
+        if isinstance(obj, PriorDict):
+            return {'__prior_dict__': True, 'content': obj._get_json_dict()}
+        if isinstance(obj, (MultivariateGaussianDist, Prior)):
+            return {'__prior__': True, '__module__': obj.__module__,
+                    '__name__': obj.__class__.__name__,
+                    'kwargs': dict(obj._get_instantiation_dict())}
+        try:
+            from astropy import cosmology as cosmo, units
+            if isinstance(obj, cosmo.FLRW):
+                return encode_astropy_cosmology(obj)
+            if isinstance(obj, units.Quantity):
+                return encode_astropy_quantity(obj)
+            if isinstance(obj, units.PrefixUnit):
+                return str(obj)
+        except ImportError:
+            logger.info("Cannot import astropy, cannot write cosmological priors")
         if isinstance(obj, np.ndarray):
             return {'__array__': True, 'content': obj.tolist()}
         if isinstance(obj, complex):
             return {'__complex__': True, 'real': obj.real, 'imag': obj.imag}
         if isinstance(obj, pd.DataFrame):
             return {'__dataframe__': True, 'content': obj.to_dict(orient='list')}
+        if inspect.isfunction(obj):
+            return {"__function__": True, "__module__": obj.__module__, "__name__": obj.__name__}
         return json.JSONEncoder.default(self, obj)
 
 
+def encode_astropy_cosmology(obj):
+    cls_name = obj.__class__.__name__
+    dct = {key: getattr(obj, key) for
+           key in infer_args_from_method(obj.__init__)}
+    dct['__cosmology__'] = True
+    dct['__name__'] = cls_name
+    return dct
+
+
+def encode_astropy_quantity(dct):
+    dct = dict(__astropy_quantity__=True, value=dct.value, unit=str(dct.unit))
+    if isinstance(dct['value'], np.ndarray):
+        dct['value'] = list(dct['value'])
+    return dct
+
+
 def decode_bilby_json(dct):
+    if dct.get("__prior_dict__", False):
+        cls = getattr(import_module(dct['__module__']), dct['__name__'])
+        obj = cls._get_from_json_dict(dct)
+        return obj
+    if dct.get("__prior__", False):
+        cls = getattr(import_module(dct['__module__']), dct['__name__'])
+        obj = cls(**dct['kwargs'])
+        return obj
+    if dct.get("__cosmology__", False):
+        return decode_astropy_cosmology(dct)
+    if dct.get("__astropy_quantity__", False):
+        return decode_astropy_quantity(dct)
     if dct.get("__array__", False):
         return np.asarray(dct["content"])
     if dct.get("__complex__", False):
         return complex(dct["real"], dct["imag"])
     if dct.get("__dataframe__", False):
         return pd.DataFrame(dct['content'])
+    if dct.get("__function__", False):
+        default = ".".join([dct["__module__"], dct["__name__"]])
+        return getattr(import_module(dct["__module__"]), dct["__name__"], default)
     return dct
+
+
+def decode_astropy_cosmology(dct):
+    try:
+        from astropy import cosmology as cosmo
+        cosmo_cls = getattr(cosmo, dct['__name__'])
+        del dct['__cosmology__'], dct['__name__']
+        return cosmo_cls(**dct)
+    except ImportError:
+        logger.info("Cannot import astropy, cosmological priors may not be "
+                    "properly loaded.")
+        return dct
+
+
+def decode_astropy_quantity(dct):
+    try:
+        from astropy import units
+        if dct['value'] is None:
+            return None
+        else:
+            del dct['__astropy_quantity__']
+            return units.Quantity(**dct)
+    except ImportError:
+        logger.info("Cannot import astropy, cosmological priors may not be "
+                    "properly loaded.")
+        return dct
+
+
+def reflect(u):
+    """
+    Iteratively reflect a number until it is contained in [0, 1].
+
+    This is for priors with a reflective boundary condition, all numbers in the
+    set `u = 2n +/- x` should be mapped to x.
+
+    For the `+` case we just take `u % 1`.
+    For the `-` case we take `1 - (u % 1)`.
+
+    E.g., -0.9, 1.1, and 2.9 should all map to 0.9.
+
+    Parameters
+    ----------
+    u: array-like
+        The array of points to map to the unit cube
+
+    Returns
+    -------
+    u: array-like
+       The input array, modified in place.
+    """
+    idxs_even = np.mod(u, 2) < 1
+    u[idxs_even] = np.mod(u[idxs_even], 1)
+    u[~idxs_even] = 1 - np.mod(u[~idxs_even], 1)
+    return u
 
 
 class IllegalDurationAndSamplingFrequencyException(Exception):
     pass
+
+
+class tcolors:
+    KEY = '\033[93m'
+    VALUE = '\033[91m'
+    HIGHLIGHT = '\033[95m'
+    END = '\033[0m'

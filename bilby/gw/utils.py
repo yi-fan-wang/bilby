@@ -1,12 +1,13 @@
 from __future__ import division
 import os
 import json
+from math import fmod
 
 import numpy as np
-from scipy import interpolate
+from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 
-from ..core.utils import (gps_time_to_gmst, ra_dec_to_theta_phi,
+from ..core.utils import (ra_dec_to_theta_phi,
                           speed_of_light, logger, run_commandline,
                           check_directory_exists_and_if_not_mkdir,
                           SamplesSummary)
@@ -87,7 +88,7 @@ def time_delay_geocentric(detector1, detector2, ra, dec, time):
     float: Time delay between the two detectors in the geocentric frame
 
     """
-    gmst = gps_time_to_gmst(time)
+    gmst = fmod(lal.GreenwichMeanSiderealTime(time), 2 * np.pi)
     theta, phi = ra_dec_to_theta_phi(ra, dec, gmst)
     omega = np.array([np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)])
     delta_d = detector2 - detector1
@@ -120,8 +121,8 @@ def get_polarization_tensor(ra, dec, time, psi, mode):
     array_like: A 3x3 representation of the polarization_tensor for the specified mode.
 
     """
-    greenwich_mean_sidereal_time = gps_time_to_gmst(time)
-    theta, phi = ra_dec_to_theta_phi(ra, dec, greenwich_mean_sidereal_time)
+    gmst = fmod(lal.GreenwichMeanSiderealTime(time), 2 * np.pi)
+    theta, phi = ra_dec_to_theta_phi(ra, dec, gmst)
     u = np.array([np.cos(phi) * np.cos(theta), np.cos(theta) * np.sin(phi), -np.sin(theta)])
     v = np.array([-np.sin(phi), np.cos(phi), 0])
     m = -u * np.sin(psi) - v * np.cos(psi)
@@ -137,7 +138,7 @@ def get_polarization_tensor(ra, dec, time, psi, mode):
     # Calculating omega here to avoid calculation when model in [plus, cross, breathing]
     omega = np.cross(m, n)
     if mode.lower() == 'longitudinal':
-        return np.sqrt(2) * np.einsum('i,j->ij', omega, omega)
+        return np.einsum('i,j->ij', omega, omega)
     elif mode.lower() == 'x':
         return np.einsum('i,j->ij', m, omega) + np.einsum('i,j->ij', omega, m)
     elif mode.lower() == 'y':
@@ -963,14 +964,15 @@ def plot_spline_pos(log_freqs, samples, nfreqs=100, level=0.9, color='k', label=
                  fmt='.', color=color, lw=4, alpha=0.5, capsize=0)
 
     for i, sample in enumerate(samples):
-        temp = interpolate.spline(log_freqs, sample, np.log(freqs))
+        temp = interp1d(
+            log_freqs, sample, kind="cubic", fill_value=0,
+            bounds_error=False)(np.log(freqs))
         if xform is None:
             data[i] = temp
         else:
             data[i] = xform(temp)
 
-    line, = plt.plot(freqs, np.mean(data, axis=0), color=color, label=label)
-    color = line.get_color()
+    plt.plot(freqs, np.mean(data, axis=0), color=color, label=label)
     plt.fill_between(freqs, data_summary.lower_absolute_credible_interval,
                      data_summary.upper_absolute_credible_interval,
                      color=color, alpha=.1, linewidth=0.1)

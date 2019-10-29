@@ -57,13 +57,14 @@ def readfile(filename):
     return filecontents
 
 
-VERSION = '0.5.2'
+VERSION = '0.5.9'
 version_file = write_version_file(VERSION)
 long_description = get_long_description()
 
 setup(name='bilby',
       description='A user-friendly Bayesian inference library',
       long_description=long_description,
+      long_description_content_type="text/x-rst",
       url='https://git.ligo.org/lscsoft/bilby',
       author='Greg Ashton, Moritz Huebner, Paul Lasky, Colm Talbot',
       author_email='paul.lasky@monash.edu',
@@ -72,22 +73,24 @@ setup(name='bilby',
       packages=['bilby', 'bilby.core', 'bilby.core.sampler',
                 'bilby.gw', 'bilby.gw.detector', 'bilby.gw.sampler',
                 'bilby.hyper', 'cli_bilby'],
-      package_dir={'bilby': 'bilby'},
+      package_dir={'bilby': 'bilby', 'cli_bilby': 'cli_bilby'},
       package_data={'bilby.gw': ['prior_files/*'],
                     'bilby.gw.detector': ['noise_curves/*.txt', 'detectors/*'],
                     'bilby': [version_file]},
       install_requires=[
           'future',
-          'dynesty>=0.9.7',
+          'dynesty>=1.0.0',
           'corner',
           'dill',
           'numpy>=1.9',
           'matplotlib>=2.0',
           'pandas',
-          'scipy'],
+          'scipy',
+          'tqdm'],
       entry_points={'console_scripts':
                     ['bilby_plot=cli_bilby.plot_multiple_posteriors:main',
-                     'bilby_result=cli_bilby.bilby_result:main']
+                     'bilby_result=cli_bilby.bilby_result:main',
+                     'bilby_convert_resume=cli_bilby.resume:main']
                     },
       classifiers=[
           "Programming Language :: Python :: 2.7",

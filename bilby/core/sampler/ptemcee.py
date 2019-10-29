@@ -2,6 +2,8 @@ from __future__ import absolute_import, division, print_function
 
 import os
 from shutil import copyfile
+import signal
+import sys
 
 import numpy as np
 
@@ -40,12 +42,16 @@ class Ptemcee(Emcee):
                  use_ratio=False, plot=False, skip_import_verification=False,
                  nburn=None, burn_in_fraction=0.25, burn_in_act=3, resume=True,
                  **kwargs):
-        Emcee.__init__(
-            self, likelihood=likelihood, priors=priors, outdir=outdir,
+        super(Ptemcee, self).__init__(
+            likelihood=likelihood, priors=priors, outdir=outdir,
             label=label, use_ratio=use_ratio, plot=plot,
             skip_import_verification=skip_import_verification,
             nburn=nburn, burn_in_fraction=burn_in_fraction,
             burn_in_act=burn_in_act, resume=resume, **kwargs)
+
+        signal.signal(signal.SIGTERM, self.write_current_state_and_exit)
+        signal.signal(signal.SIGINT, self.write_current_state_and_exit)
+        signal.signal(signal.SIGALRM, self.write_current_state_and_exit)
 
     @property
     def sampler_function_kwargs(self):
@@ -82,7 +88,10 @@ class Ptemcee(Emcee):
         chain_file = self.checkpoint_info.chain_file
         temp_chain_file = chain_file + '.temp'
         if os.path.isfile(chain_file):
-            copyfile(chain_file, temp_chain_file)
+            try:
+                copyfile(chain_file, temp_chain_file)
+            except OSError:
+                logger.warning("Failed to write temporary chain file {}".format(temp_chain_file))
 
         with open(temp_chain_file, "a") as ff:
             loglike = np.squeeze(loglike[0, :])
@@ -91,6 +100,10 @@ class Ptemcee(Emcee):
                 line = np.concatenate((point, [logl, logp]))
                 ff.write(self.checkpoint_info.chain_template.format(ii, *line))
         os.rename(temp_chain_file, chain_file)
+
+    def write_current_state_and_exit(self, signum=None, frame=None):
+        logger.warning("Run terminated with signal {}".format(signum))
+        sys.exit(130)
 
     @property
     def _previous_iterations(self):

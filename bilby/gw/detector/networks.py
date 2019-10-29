@@ -1,5 +1,6 @@
 import os
 import sys
+import warnings
 
 import numpy as np
 
@@ -26,7 +27,7 @@ class InterferometerList(list):
             The list of interferometers
         """
 
-        list.__init__(self)
+        super(InterferometerList, self).__init__()
         if type(interferometers) == str:
             raise TypeError("Input must not be a string")
         for ifo in interferometers:
@@ -245,7 +246,7 @@ class TriangularInterferometer(InterferometerList):
     def __init__(self, name, power_spectral_density, minimum_frequency, maximum_frequency,
                  length, latitude, longitude, elevation, xarm_azimuth, yarm_azimuth,
                  xarm_tilt=0., yarm_tilt=0.):
-        InterferometerList.__init__(self, [])
+        super(TriangularInterferometer, self).__init__([])
         self.name = name
         # for attr in ['power_spectral_density', 'minimum_frequency', 'maximum_frequency']:
         if isinstance(power_spectral_density, PowerSpectralDensity):
@@ -307,6 +308,12 @@ def get_event_data(
     ------
     list: A list of bilby.gw.detector.Interferometer objects
     """
+
+    warnings.warn(
+        "get_event_data is deprecated, use set_strain_data_from_gwpy instead",
+        DeprecationWarning
+    )
+
     event_time = gwutils.get_event_time(event)
 
     interferometers = []
@@ -435,6 +442,11 @@ def get_interferometer_with_open_data(
     bilby.gw.detector.Interferometer: An Interferometer instance with a PSD and frequency-domain strain data.
 
     """
+
+    warnings.warn(
+        "get_interferometer_with_open_data is deprecated, use set_strain_data_from_gwpy instead",
+        DeprecationWarning
+    )
 
     logger.warning(
         "Parameter estimation for real interferometer data in bilby is in "

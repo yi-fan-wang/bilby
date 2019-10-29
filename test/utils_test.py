@@ -3,6 +3,7 @@ from __future__ import absolute_import, division
 import unittest
 import numpy as np
 from astropy import constants
+import lal
 
 import bilby
 from bilby.core import utils
@@ -11,16 +12,28 @@ from bilby.core import utils
 class TestConstants(unittest.TestCase):
 
     def test_speed_of_light(self):
-        self.assertTrue(bilby.core.utils.speed_of_light, constants.c.value)
+        self.assertEqual(utils.speed_of_light, lal.C_SI)
+        self.assertLess(
+           abs(utils.speed_of_light - constants.c.value) / utils.speed_of_light,
+           1e-16)
 
     def test_parsec(self):
-        self.assertTrue(bilby.core.utils.parsec, constants.pc.value)
+        self.assertEqual(utils.parsec, lal.PC_SI)
+        self.assertLess(
+           abs(utils.parsec - constants.pc.value) / utils.parsec,
+           1e-11)
 
     def test_solar_mass(self):
-        self.assertTrue(bilby.core.utils.solar_mass, constants.M_sun.value)
+        self.assertEqual(utils.solar_mass, lal.MSUN_SI)
+        self.assertLess(
+            abs(utils.solar_mass - constants.M_sun.value) / utils.solar_mass,
+            1e-4)
 
     def test_radius_of_earth(self):
-        self.assertTrue(bilby.core.utils.radius_of_earth, constants.R_earth.value)
+        self.assertEqual(bilby.core.utils.radius_of_earth, lal.REARTH_SI)
+        self.assertLess(
+            abs(utils.radius_of_earth - constants.R_earth.value) / utils.radius_of_earth,
+            1e-5)
 
 
 class TestFFT(unittest.TestCase):
@@ -59,14 +72,21 @@ class TestInferParameters(unittest.TestCase):
             def test_method(self, a, b, *args, **kwargs):
                 pass
 
+        class TestClass2:
+            def test_method(self, freqs, a, b, *args, **kwargs):
+                pass
+
         self.source1 = source_function
         test_obj = TestClass()
         self.source2 = test_obj.test_method
+        test_obj2 = TestClass2()
+        self.source3 = test_obj2.test_method
 
     def tearDown(self):
         del self.source1
         del self.source2
 
+        
     def test_args_kwargs_handling(self):
         expected = ['a', 'b']
         actual = utils.infer_parameters_from_function(self.source1)
@@ -76,7 +96,11 @@ class TestInferParameters(unittest.TestCase):
         expected = ['a', 'b']
         actual = utils.infer_args_from_method(self.source2)
         self.assertListEqual(expected, actual)
-
+        
+    def test_self_handling_method_as_function(self):
+        expected = ['a', 'b']
+        actual = utils.infer_parameters_from_function(self.source3)
+        self.assertListEqual(expected, actual)
 
 class TestTimeAndFrequencyArrays(unittest.TestCase):
 
@@ -164,6 +188,38 @@ class TestTimeAndFrequencyArrays(unittest.TestCase):
                                          duration=1.3,
                                          starting_time=0)
 
+
+class TestReflect(unittest.TestCase):
+
+    def test_in_range(self):
+        xprime = np.array([0.1, 0.5, 0.9])
+        x = np.array([0.1, 0.5, 0.9])
+        self.assertTrue(
+            np.testing.assert_allclose(utils.reflect(xprime),  x) is None)
+
+    def test_in_one_to_two(self):
+        xprime = np.array([1.1, 1.5, 1.9])
+        x = np.array([0.9, 0.5, 0.1])
+        self.assertTrue(
+            np.testing.assert_allclose(utils.reflect(xprime),  x) is None)
+
+    def test_in_two_to_three(self):
+        xprime = np.array([2.1, 2.5, 2.9])
+        x = np.array([0.1, 0.5, 0.9])
+        self.assertTrue(
+            np.testing.assert_allclose(utils.reflect(xprime),  x) is None)
+
+    def test_in_minus_one_to_zero(self):
+        xprime = np.array([-0.9, -0.5, -0.1])
+        x = np.array([0.9, 0.5, 0.1])
+        self.assertTrue(
+            np.testing.assert_allclose(utils.reflect(xprime),  x) is None)
+
+    def test_in_minus_two_to_minus_one(self):
+        xprime = np.array([-1.9, -1.5, -1.1])
+        x = np.array([0.1, 0.5, 0.9])
+        self.assertTrue(
+            np.testing.assert_allclose(utils.reflect(xprime),  x) is None)
 
 if __name__ == '__main__':
     unittest.main()

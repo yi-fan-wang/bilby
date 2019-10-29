@@ -16,10 +16,10 @@ except ImportError:
 from scipy.special import i0e
 
 from ..core import likelihood
+from ..core.utils import BilbyJsonEncoder, decode_bilby_json
 from ..core.utils import (
-    logger, UnsortedInterp2d, BilbyJsonEncoder, decode_bilby_json,
-    create_frequency_series, create_time_series, speed_of_light,
-    radius_of_earth)
+    logger, UnsortedInterp2d, create_frequency_series, create_time_series,
+    speed_of_light, radius_of_earth)
 from ..core.prior import Interped, Prior, Uniform
 from .detector import InterferometerList
 from .prior import BBHPriorDict
@@ -49,12 +49,21 @@ class GravitationalWaveTransient(likelihood.Likelihood):
     distance_marginalization: bool, optional
         If true, marginalize over distance in the likelihood.
         This uses a look up table calculated at run time.
+        The distance prior is set to be a delta function at the minimum
+        distance allowed in the prior being marginalised over.
     time_marginalization: bool, optional
         If true, marginalize over time in the likelihood.
-        This uses a FFT.
+        This uses a FFT to calculate the likelihood over a regularly spaced
+        grid.
+        In order to cover the whole space the prior is set to be uniform over
+        the spacing of the array of times.
+        If using time marginalisation and jitter_time is True a "jitter"
+        parameter is added to the prior which modifies the position of the
+        grid of times.
     phase_marginalization: bool, optional
         If true, marginalize over phase in the likelihood.
         This is done analytically using a Bessel function.
+        The phase prior is set to be a delta function at phase=0.
     priors: dict, optional
         If given, used in the distance and phase marginalization.
     distance_marginalization_lookup_table: (dict, str), optional
@@ -65,6 +74,11 @@ class GravitationalWaveTransient(likelihood.Likelihood):
         The lookup table is stored after construction in either the
         provided string or a default location:
         '.distance_marginalization_lookup_dmin{}_dmax{}_n{}.npz'
+    jitter_time: bool, optional
+        Whether to introduce a `time_jitter` parameter. This avoids either
+        missing the likelihood peak, or introducing biases in the
+        reconstructed time posterior due to an insufficient sampling frequency.
+        Default is False, however using this parameter is strongly encouraged.
 
     Returns
     -------
@@ -83,27 +97,40 @@ class GravitationalWaveTransient(likelihood.Likelihood):
     def __init__(self, interferometers, waveform_generator,
                  time_marginalization=False, distance_marginalization=False,
                  phase_marginalization=False, priors=None,
-                 distance_marginalization_lookup_table=None):
+                 distance_marginalization_lookup_table=None,
+                 jitter_time=True):
 
         self.waveform_generator = waveform_generator
-        likelihood.Likelihood.__init__(self, dict())
+        super(GravitationalWaveTransient, self).__init__(dict())
         self.interferometers = InterferometerList(interferometers)
         self.time_marginalization = time_marginalization
         self.distance_marginalization = distance_marginalization
         self.phase_marginalization = phase_marginalization
         self.priors = priors
         self._check_set_duration_and_sampling_frequency_of_waveform_generator()
+        self.jitter_time = jitter_time
 
         if self.time_marginalization:
             self._check_prior_is_set(key='geocent_time')
             self._setup_time_marginalization()
             priors['geocent_time'] = float(self.interferometers.start_time)
+            if self.jitter_time:
+                priors['time_jitter'] = Uniform(
+                    minimum=- self._delta_tc / 2, maximum=self._delta_tc / 2,
+                    boundary='periodic')
+            self._marginalized_parameters.append('geocent_time')
+        elif self.jitter_time:
+            logger.debug(
+                "Time jittering requested with non-time-marginalised "
+                "likelihood, ignoring.")
+            self.jitter_time = False
 
         if self.phase_marginalization:
             self._check_prior_is_set(key='phase')
             self._bessel_function_interped = None
             self._setup_phase_marginalization()
             priors['phase'] = float(0)
+            self._marginalized_parameters.append('phase')
 
         if self.distance_marginalization:
             self._lookup_table_filename = None
@@ -117,6 +144,7 @@ class GravitationalWaveTransient(likelihood.Likelihood):
             self._setup_distance_marginalization(
                 distance_marginalization_lookup_table)
             priors['luminosity_distance'] = float(self._ref_dist)
+            self._marginalized_parameters.append('luminosity_distance')
 
     def __repr__(self):
         return self.__class__.__name__ + '(interferometers={},\n\twaveform_generator={},\n\ttime_marginalization={}, ' \
@@ -225,6 +253,8 @@ class GravitationalWaveTransient(likelihood.Likelihood):
         optimal_snr_squared = 0.
         complex_matched_filter_snr = 0.
         if self.time_marginalization:
+            if self.jitter_time:
+                self.parameters['geocent_time'] += self.parameters['time_jitter']
             d_inner_h_tc_array = np.zeros(
                 self.interferometers.frequency_array[0:-1].shape,
                 dtype=np.complex128)
@@ -245,6 +275,8 @@ class GravitationalWaveTransient(likelihood.Likelihood):
             log_l = self.time_marginalized_likelihood(
                 d_inner_h_tc_array=d_inner_h_tc_array,
                 h_inner_h=optimal_snr_squared)
+            if self.jitter_time:
+                self.parameters['geocent_time'] -= self.parameters['time_jitter']
 
         elif self.distance_marginalization:
             log_l = self.distance_marginalized_likelihood(
@@ -317,9 +349,12 @@ class GravitationalWaveTransient(likelihood.Likelihood):
         new_time: float
             Sample from the time posterior.
         """
+        if self.jitter_time:
+            self.parameters['geocent_time'] += self.parameters['time_jitter']
         if signal_polarizations is None:
             signal_polarizations = \
                 self.waveform_generator.frequency_domain_strain(self.parameters)
+
         n_time_steps = int(self.waveform_generator.duration * 16384)
         d_inner_h = np.zeros(n_time_steps, dtype=np.complex)
         psd = np.ones(n_time_steps)
@@ -347,8 +382,10 @@ class GravitationalWaveTransient(likelihood.Likelihood):
 
         times = create_time_series(
             sampling_frequency=16384,
-            starting_time=self.waveform_generator.start_time,
+            starting_time=self.parameters['geocent_time'] - self.waveform_generator.start_time,
             duration=self.waveform_generator.duration)
+        times = times % self.waveform_generator.duration
+        times += self.waveform_generator.start_time
 
         time_prior_array = self.priors['geocent_time'].prob(times)
         time_post = (
@@ -357,6 +394,7 @@ class GravitationalWaveTransient(likelihood.Likelihood):
         keep = (time_post > max(time_post) / 1000)
         time_post = time_post[keep]
         times = times[keep]
+
         new_time = Interped(times, time_post).sample()
         return new_time
 
@@ -482,7 +520,11 @@ class GravitationalWaveTransient(likelihood.Likelihood):
                 h_inner_h=h_inner_h)
         else:
             log_l_tc_array = np.real(d_inner_h_tc_array) - h_inner_h / 2
-        return logsumexp(log_l_tc_array, b=self.time_prior_array)
+        times = self._times
+        if self.jitter_time:
+            times = self._times + self.parameters['time_jitter']
+        time_prior_array = self.priors['geocent_time'].prob(times) * self._delta_tc
+        return logsumexp(log_l_tc_array, b=time_prior_array)
 
     def _setup_rho(self, d_inner_h, optimal_snr_squared):
         optimal_snr_squared_ref = (optimal_snr_squared.real *
@@ -533,17 +575,13 @@ class GravitationalWaveTransient(likelihood.Likelihood):
             self._create_lookup_table()
         self._interp_dist_margd_loglikelihood = UnsortedInterp2d(
             self._d_inner_h_ref_array, self._optimal_snr_squared_ref_array,
-            self._dist_margd_loglikelihood_array)
+            self._dist_margd_loglikelihood_array, kind='cubic')
 
     @property
     def cached_lookup_table_filename(self):
         if self._lookup_table_filename is None:
-            dmin = self._distance_array[0]
-            dmax = self._distance_array[-1]
-            n = len(self._distance_array)
             self._lookup_table_filename = (
-                '.distance_marginalization_lookup.npz'
-                .format(dmin, dmax, n))
+                '.distance_marginalization_lookup.npz')
         return self._lookup_table_filename
 
     @cached_lookup_table_filename.setter
@@ -555,7 +593,12 @@ class GravitationalWaveTransient(likelihood.Likelihood):
 
     def load_lookup_table(self, filename):
         if os.path.exists(filename):
-            loaded_file = dict(np.load(filename))
+            try:
+                loaded_file = dict(np.load(filename))
+            except AttributeError as e:
+                logger.warning(e)
+                self._create_lookup_table()
+                return None
             match, failure = self._test_cached_lookup_table(loaded_file)
             if match:
                 logger.info('Loaded distance marginalisation lookup table from '
@@ -564,13 +607,10 @@ class GravitationalWaveTransient(likelihood.Likelihood):
             else:
                 logger.info('Loaded distance marginalisation lookup table does '
                             'not match for {}.'.format(failure))
-                return None
         elif isinstance(filename, str):
             logger.info('Distance marginalisation file {} does not '
                         'exist'.format(filename))
-            return None
-        else:
-            return None
+        return None
 
     def cache_lookup_table(self):
         np.savez(self.cached_lookup_table_filename,
@@ -624,14 +664,14 @@ class GravitationalWaveTransient(likelihood.Likelihood):
             bounds_error=False, fill_value=(0, np.nan))
 
     def _setup_time_marginalization(self):
-        delta_tc = 2 / self.waveform_generator.sampling_frequency
+        self._delta_tc = 2 / self.waveform_generator.sampling_frequency
         self._times =\
             self.interferometers.start_time + np.linspace(
                 0, self.interferometers.duration,
                 int(self.interferometers.duration / 2 *
                     self.waveform_generator.sampling_frequency + 1))[1:]
-        self.time_prior_array =\
-            self.priors['geocent_time'].prob(self._times) * delta_tc
+        self.time_prior_array = \
+            self.priors['geocent_time'].prob(self._times) * self._delta_tc
 
     @property
     def interferometers(self):
@@ -646,6 +686,16 @@ class GravitationalWaveTransient(likelihood.Likelihood):
             signal[mode] *= self._ref_dist / new_distance
 
     @property
+    def lal_version(self):
+        try:
+            from lal import git_version
+            lal_version = str(git_version.verbose_msg).replace("\n", ";")
+            logger.info("Using LAL version {}".format(lal_version))
+            return lal_version
+        except (ImportError, AttributeError):
+            return "N/A"
+
+    @property
     def meta_data(self):
         return dict(
             interferometers=self.interferometers.meta_data,
@@ -653,11 +703,12 @@ class GravitationalWaveTransient(likelihood.Likelihood):
             phase_marginalization=self.phase_marginalization,
             distance_marginalization=self.distance_marginalization,
             waveform_arguments=self.waveform_generator.waveform_arguments,
-            frequency_domain_source_model=str(
-                self.waveform_generator.frequency_domain_source_model),
+            frequency_domain_source_model=self.waveform_generator.frequency_domain_source_model,
+            parameter_conversion=self.waveform_generator.parameter_conversion,
             sampling_frequency=self.waveform_generator.sampling_frequency,
             duration=self.waveform_generator.duration,
-            start_time=self.waveform_generator.start_time)
+            start_time=self.waveform_generator.start_time,
+            lal_version=self.lal_version)
 
 
 class BasicGravitationalWaveTransient(likelihood.Likelihood):
@@ -682,7 +733,7 @@ class BasicGravitationalWaveTransient(likelihood.Likelihood):
             given some set of parameters
 
         """
-        likelihood.Likelihood.__init__(self, dict())
+        super(BasicGravitationalWaveTransient, self).__init__(dict())
         self.interferometers = interferometers
         self.waveform_generator = waveform_generator
 
@@ -790,12 +841,14 @@ class ROQGravitationalWaveTransient(GravitationalWaveTransient):
                  roq_params=None,
                  distance_marginalization=False, phase_marginalization=False,
                  distance_marginalization_lookup_table=None):
-        GravitationalWaveTransient.__init__(
-            self, interferometers=interferometers,
+        super(ROQGravitationalWaveTransient, self).__init__(
+            interferometers=interferometers,
             waveform_generator=waveform_generator, priors=priors,
             distance_marginalization=distance_marginalization,
             phase_marginalization=phase_marginalization,
-            distance_marginalization_lookup_table=distance_marginalization_lookup_table)
+            time_marginalization=False,
+            distance_marginalization_lookup_table=distance_marginalization_lookup_table,
+            jitter_time=False)
 
         if isinstance(roq_params, np.ndarray) or roq_params is None:
             self.roq_params = roq_params
@@ -845,8 +898,8 @@ class ROQGravitationalWaveTransient(GravitationalWaveTransient):
         dt = interferometer.time_delay_from_geocenter(
             self.parameters['ra'], self.parameters['dec'],
             self.parameters['geocent_time'])
-        ifo_time = self.parameters['geocent_time'] + dt - \
-            interferometer.strain_data.start_time
+        dt_geocent = self.parameters['geocent_time'] - interferometer.strain_data.start_time
+        ifo_time = dt_geocent + dt
 
         calib_linear = interferometer.calibration_model.get_calibration_factor(
             self.frequency_nodes_linear,
@@ -1021,7 +1074,8 @@ class ROQGravitationalWaveTransient(GravitationalWaveTransient):
             with open(filename, 'r') as file:
                 weights = json.load(file, object_hook=decode_bilby_json)
         elif format == "npz":
-            weights = np.load(filename)
+            # Wrap in dict to load data into memory
+            weights = dict(np.load(filename))
         return weights
 
     def _get_time_resolution(self):

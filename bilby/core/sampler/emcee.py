@@ -61,8 +61,8 @@ class Emcee(MCMCSampler):
             self.prerelease = True
         else:
             self.prerelease = False
-        MCMCSampler.__init__(
-            self, likelihood=likelihood, priors=priors, outdir=outdir,
+        super(Emcee, self).__init__(
+            likelihood=likelihood, priors=priors, outdir=outdir,
             label=label, use_ratio=use_ratio, plot=plot,
             skip_import_verification=skip_import_verification, **kwargs)
         self.resume = resume
@@ -354,23 +354,23 @@ class Emcee(MCMCSampler):
         self.checkpoint()
 
         self.result.sampler_output = np.nan
-        blobs_flat = np.array(self.sampler.blobs).reshape((-1, 2))
-        log_likelihoods, log_priors = blobs_flat.T
-        chain = self.sampler.chain.reshape((-1, self.ndim))
-        log_ls = log_likelihoods
-        log_ps = log_priors
-        self.calculate_autocorrelation(chain)
+
+        self.calculate_autocorrelation(
+            self.sampler.chain.reshape((-1, self.ndim)))
         self.print_nburn_logging_info()
         self.calc_likelihood_count()
         self.result.nburn = self.nburn
-        n_samples = self.nwalkers * self.nburn
         if self.result.nburn > self.nsteps:
             raise SamplerError(
                 "The run has finished, but the chain is not burned in: "
                 "`nburn < nsteps`. Try increasing the number of steps.")
-        self.result.samples = chain[n_samples:, :]
-        self.result.log_likelihood_evaluations = log_ls[n_samples:]
-        self.result.log_prior_evaluations = log_ps[n_samples:]
+        self.result.samples = self.sampler.chain[:, self.nburn:, :].reshape(
+            (-1, self.ndim))
+        blobs = np.array(self.sampler.blobs)
+        blobs_trimmed = blobs[self.nburn:, :, :].reshape((-1, 2))
+        log_likelihoods, log_priors = blobs_trimmed.T
+        self.result.log_likelihood_evaluations = log_likelihoods
+        self.result.log_prior_evaluations = log_priors
         self.result.walkers = self.sampler.chain
         self.result.log_evidence = np.nan
         self.result.log_evidence_err = np.nan

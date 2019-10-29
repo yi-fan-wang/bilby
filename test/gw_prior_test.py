@@ -1,4 +1,5 @@
 from __future__ import division, absolute_import
+from collections import OrderedDict
 import unittest
 import os
 import sys
@@ -110,10 +111,36 @@ class TestBBHPriorDict(unittest.TestCase):
         self.assertFalse(self.bbh_prior_dict.test_has_redundant_keys())
 
 
+class TestPackagedPriors(unittest.TestCase):
+    """ Test that the prepackaged priors load """
+
+    def test_aligned(self):
+        filename = 'aligned_spin_binary_black_holes.prior'
+        prior_dict = bilby.gw.prior.BBHPriorDict(filename=filename)
+        self.assertTrue('chi_1' in prior_dict)
+        self.assertTrue('chi_2' in prior_dict)
+
+    def test_precessing(self):
+        filename = 'precessing_binary_neutron_stars.prior'
+        prior_dict = bilby.gw.prior.BBHPriorDict(filename=filename)
+        self.assertTrue('lambda_1' in prior_dict)
+        self.assertTrue('lambda_2' in prior_dict)
+
+    def test_binary_black_holes(self):
+        filename = 'binary_black_holes.prior'
+        prior_dict = bilby.gw.prior.BBHPriorDict(filename=filename)
+        self.assertTrue('a_1' in prior_dict)
+
+    def test_binary_neutron_stars(self):
+        filename = 'binary_neutron_stars.prior'
+        prior_dict = bilby.gw.prior.BNSPriorDict(filename=filename)
+        self.assertTrue('lambda_1' in prior_dict)
+
+
 class TestBNSPriorDict(unittest.TestCase):
 
     def setUp(self):
-        self.prior_dict = dict()
+        self.prior_dict = OrderedDict()
         self.base_directory =\
             '/'.join(os.path.dirname(
                 os.path.abspath(sys.argv[0])).split('/')[:-1])
@@ -149,7 +176,7 @@ class TestBNSPriorDict(unittest.TestCase):
     def test_redundant_priors_not_in_dict_before(self):
         for prior in ['chirp_mass', 'total_mass', 'mass_ratio',
                       'symmetric_mass_ratio', 'cos_theta_jn', 'comoving_distance',
-                      'redshift', 'lambda_tilde', 'delta_lambda']:
+                      'redshift', 'lambda_tilde', 'delta_lambda_tilde']:
             self.assertTrue(self.bns_prior_dict.test_redundancy(prior))
 
     def test_redundant_priors_already_in_dict(self):
@@ -180,7 +207,7 @@ class TestBNSPriorDict(unittest.TestCase):
 
     def test_correct_not_redundant_priors_tidal(self):
         del self.bns_prior_dict['lambda_1']
-        for prior in['lambda_1', 'lambda_tilde', 'delta_lambda']:
+        for prior in['lambda_1', 'lambda_tilde', 'delta_lambda_tilde']:
             self.assertFalse(self.bns_prior_dict.test_redundancy(prior))
 
     def test_add_unrelated_prior(self):

@@ -909,6 +909,26 @@ def lalsim_SimInspiralWaveformParamsInsertNonGRMassiveGravitonLambda(
     return lalsim.SimInspiralWaveformParamsInsertNonGRMassiveGravitonLambda(
         waveform_dictionary,mg_lambda)
 
+def lalsim_SimInspiralWaveformParamsInsertNonGRParityLambdaTilt(
+            waveform_dictionary, parity_lambdatilt):
+    try:
+        parity_lambdatilt = float(parity_lambdatilt)
+    except ValueError:
+        raise ValueError("Unable to convert parity_lambdatilt to float")
+
+    return lalsim.SimInspiralWaveformParamsInsertNonGRParityLambdaTilt(
+        waveform_dictionary,parity_lambdatilt)
+
+def lalsim_SimInspiralWaveformParamsInsertNonGRParityAlpha(
+            waveform_dictionary, parity_alpha):
+    try:
+        parity_alpha = int(parity_alpha)
+    except ValueError:
+        raise ValueError("Unable to convert parity_alpha to float")
+
+    return lalsim.SimInspiralWaveformParamsInsertNonGRParityAlpha(
+        waveform_dictionary,parity_alpha)
+
 def spline_angle_xform(delta_psi):
     """
     Returns the angle in degrees corresponding to the spline

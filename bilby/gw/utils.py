@@ -919,6 +919,17 @@ def lalsim_SimInspiralWaveformParamsInsertNonGRParityLambdaTilt(
     return lalsim.SimInspiralWaveformParamsInsertNonGRParityLambdaTilt(
         waveform_dictionary,parity_lambdatilt)
 
+def lalsim_SimInspiralWaveformParamsInsertNonGRParitylog10LambdaTilt(
+            waveform_dictionary, parity_log10lambdatilt):
+    try:
+        parity_log10lambdatilt = float(parity_log10lambdatilt)
+    except ValueError:
+        raise ValueError("Unable to convert parity_log10lambdatilt to float")
+
+    return lalsim.SimInspiralWaveformParamsInsertNonGRParitylog10LambdaTilt(
+        waveform_dictionary,parity_log10lambdatilt)
+
+
 def lalsim_SimInspiralWaveformParamsInsertNonGRParityAlpha(
             waveform_dictionary, parity_alpha):
     try:

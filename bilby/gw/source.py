@@ -15,6 +15,7 @@ from .utils import (lalsim_GetApproximantFromString,
                     lalsim_SimInspiralWaveformParamsInsertNonGRDAlpha2,
                     lalsim_SimInspiralWaveformParamsInsertNonGRMassiveGravitonLambda,
                     lalsim_SimInspiralWaveformParamsInsertNonGRParityLambdaTilt,
+                    lalsim_SimInspiralWaveformParamsInsertNonGRParitylog10LambdaTilt,
                     lalsim_SimInspiralWaveformParamsInsertNonGRParityAlpha,
                     lalsim_SimInspiralChooseFDWaveformSequence)
 
@@ -175,7 +176,7 @@ def lal_eccentric_binary_black_hole_no_spins(
 
 def lal_nonGR_binary_black_hole(
         frequency_array, mass_1, mass_2, luminosity_distance, a_1, tilt_1,
-        phi_12, a_2, tilt_2, phi_jl, theta_jn, phase, dchi_2, dchi_3, dalpha_2, mg_lambda, parity_lambdatilt, parity_alpha, **kwargs):
+        phi_12, a_2, tilt_2, phi_jl, theta_jn, phase, dchi_2, dchi_3, dalpha_2, mg_lambda, parity_lambdatilt, parity_log10lambdatilt, parity_alpha, **kwargs):
     """ A Binary Black Hole waveform model using lalsimulation
 
     Parameters
@@ -221,13 +222,13 @@ def lal_nonGR_binary_black_hole(
         frequency_array=frequency_array, mass_1=mass_1, mass_2=mass_2,
         luminosity_distance=luminosity_distance, theta_jn=theta_jn, phase=phase,
         a_1=a_1, a_2=a_2, tilt_1=tilt_1, tilt_2=tilt_2, phi_12=phi_12,
-        phi_jl=phi_jl, dchi_2 = dchi_2, dchi_3 = dchi_3, dalpha_2 = dalpha_2, mg_lambda= mg_lambda, parity_lambdatilt = parity_lambdatilt, parity_alpha = parity_alpha, **waveform_kwargs)
+        phi_jl=phi_jl, dchi_2 = dchi_2, dchi_3 = dchi_3, dalpha_2 = dalpha_2, mg_lambda= mg_lambda, parity_lambdatilt = parity_lambdatilt, parity_log10lambda= parity_log10lambda, parity_alpha = parity_alpha, **waveform_kwargs)
 
 def _base_lal_cbc_fd_waveform(
         frequency_array, mass_1, mass_2, luminosity_distance, theta_jn, phase,
         a_1=0.0, a_2=0.0, tilt_1=0.0, tilt_2=0.0, phi_12=0.0, phi_jl=0.0,
         lambda_1=0.0, lambda_2=0.0, eccentricity=0.0, 
-        dchi_2 = 0.0, dchi_3 = 0.0, dalpha_2 = 0.0, mg_lambda = 0.0, parity_lambdatilt = 0.0, parity_alpha = 0, **waveform_kwargs):
+        dchi_2 = 0.0, dchi_3 = 0.0, dalpha_2 = 0.0, mg_lambda = 0.0, parity_lambdatilt = 0.0, parity_log10lambda = 0.0, parity_alpha = 0, **waveform_kwargs):
     """ Generate a cbc waveform model using lalsimulation
 
     Parameters
@@ -328,6 +329,8 @@ def _base_lal_cbc_fd_waveform(
         waveform_dictionary, mg_lambda)
     lalsim_SimInspiralWaveformParamsInsertNonGRParityLambdaTilt(
         waveform_dictionary, parity_lambdatilt)
+    lalsim_SimInspiralWaveformParamsInsertNonGRParitylog10LambdaTilt(
+        waveform_dictionary, parity_log10lambdatilt)
     lalsim_SimInspiralWaveformParamsInsertNonGRParityAlpha(
         waveform_dictionary, parity_alpha)
 

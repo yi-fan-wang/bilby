@@ -7,7 +7,7 @@ sampling_frequency = 2048.
 
 # Specify the output directory and the name of the simulation.
 outdir = 'ResultParity'
-label = '2019-11-25-log10lambda'
+label = '2019-11-25-log10lambda-4params'
 bilby.core.utils.setup_logger(outdir=outdir, label=label)
 
 # Set up a random seed for result reproducibility.  This is optional!
@@ -32,7 +32,8 @@ priors['geocent_time'] = bilby.core.prior.Uniform(
     maximum=injection_parameters['geocent_time'] + 0.1,
     name='geocent_time', latex_label='$t_c$', unit='$s$')
 
-for key in ['a_1', 'a_2', 'tilt_1', 'tilt_2', 'phi_12', 'phi_jl','geocent_time','phase']:
+for key in ['a_1', 'a_2', 'tilt_1', 'tilt_2', 'phi_12', 'phi_jl', 'psi', 'ra',
+            'dec', 'geocent_time', 'phase']:
     priors[key] = injection_parameters[key]
 
 #Testing GR parameters

@@ -2,7 +2,14 @@
 
 from setuptools import setup
 import subprocess
+import sys
 import os
+
+# check that python version is 3.5 or above
+python_version = sys.version_info
+if python_version < (3, 5):
+    sys.exit("Python < 3.5 is not supported, aborting setup")
+print("Confirmed Python version {}.{}.{} >= 3.5.0".format(*python_version[:3]))
 
 
 def write_version_file(version):
@@ -57,7 +64,7 @@ def readfile(filename):
     return filecontents
 
 
-VERSION = '0.5.9'
+VERSION = '0.6.3'
 version_file = write_version_file(VERSION)
 long_description = get_long_description()
 
@@ -70,16 +77,18 @@ setup(name='bilby',
       author_email='paul.lasky@monash.edu',
       license="MIT",
       version=VERSION,
-      packages=['bilby', 'bilby.core', 'bilby.core.sampler',
+      packages=['bilby', 'bilby.core', 'bilby.core.prior', 'bilby.core.sampler',
                 'bilby.gw', 'bilby.gw.detector', 'bilby.gw.sampler',
                 'bilby.hyper', 'cli_bilby'],
       package_dir={'bilby': 'bilby', 'cli_bilby': 'cli_bilby'},
       package_data={'bilby.gw': ['prior_files/*'],
                     'bilby.gw.detector': ['noise_curves/*.txt', 'detectors/*'],
                     'bilby': [version_file]},
+      python_requires='>=3.5',
       install_requires=[
           'future',
           'dynesty>=1.0.0',
+          'emcee',
           'corner',
           'dill',
           'numpy>=1.9',
@@ -93,7 +102,7 @@ setup(name='bilby',
                      'bilby_convert_resume=cli_bilby.resume:main']
                     },
       classifiers=[
-          "Programming Language :: Python :: 2.7",
+          "Programming Language :: Python :: 3.6",
           "Programming Language :: Python :: 3.7",
           "License :: OSI Approved :: MIT License",
           "Operating System :: OS Independent"])

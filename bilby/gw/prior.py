@@ -1,15 +1,18 @@
 import os
+import copy
 
 import numpy as np
 from scipy.interpolate import InterpolatedUnivariateSpline
 
 from ..core.prior import (PriorDict, Uniform, Prior, DeltaFunction, Gaussian,
-                          Interped, Constraint)
+                          Interped, Constraint, conditional_prior_factory)
 from ..core.utils import infer_args_from_method, logger
 from .conversion import (
     convert_to_lal_binary_black_hole_parameters,
     convert_to_lal_binary_neutron_star_parameters, generate_mass_parameters,
-    generate_tidal_parameters, fill_from_fixed_priors)
+    generate_tidal_parameters, fill_from_fixed_priors,
+    chirp_mass_and_mass_ratio_to_total_mass,
+    total_mass_and_mass_ratio_to_component_masses)
 from .cosmology import get_cosmology
 
 try:
@@ -17,6 +20,69 @@ try:
 except ImportError:
     logger.debug("You do not have astropy installed currently. You will"
                  " not be able to use some of the prebuilt functions.")
+
+
+class BilbyPriorConversionError(Exception):
+    pass
+
+
+def convert_to_flat_in_component_mass_prior(result, fraction=0.25):
+    """ Converts samples with a defined prior in chirp-mass and mass-ratio to flat in component mass by resampling with
+    the posterior with weights defined as ratio in new:old prior values times the jacobian which for
+    F(mc, q) -> G(m1, m2) is defined as J := m1^2 / mc
+
+    Parameters
+    ----------
+    result: bilby.core.result.Result
+        The output result complete with priors and posteriors
+    fraction: float [0, 1]
+        The fraction of samples to draw (default=0.25). Note, if too high a
+        fraction of samples are draw, the reweighting will not be applied in
+        effect.
+
+    """
+    if getattr(result, "priors") is not None:
+        for key in ['chirp_mass', 'mass_ratio']:
+            if key not in result.priors.keys():
+                BilbyPriorConversionError("{} Prior not found in result object".format(key))
+            if isinstance(result.priors[key], Constraint):
+                BilbyPriorConversionError("{} Prior should not be a Constraint".format(key))
+        for key in ['mass_1', 'mass_2']:
+            if not isinstance(result.priors[key], Constraint):
+                BilbyPriorConversionError("{} Prior should be a Constraint Prior".format(key))
+    else:
+        BilbyPriorConversionError("No prior in the result: unable to convert")
+
+    result = copy.copy(result)
+    priors = result.priors
+    old_priors = copy.copy(result.priors)
+    posterior = result.posterior
+
+    for key in ['chirp_mass', 'mass_ratio']:
+        priors[key] = Constraint(priors[key].minimum, priors[key].maximum, key, latex_label=priors[key].latex_label)
+    for key in ['mass_1', 'mass_2']:
+        priors[key] = Uniform(priors[key].minimum, priors[key].maximum, key, latex_label=priors[key].latex_label,
+                              unit="$M_{\odot}$")
+
+    weights = np.array(result.get_weights_by_new_prior(old_priors, priors,
+                                                       prior_names=['chirp_mass', 'mass_ratio', 'mass_1', 'mass_2']))
+    jacobian = posterior["mass_1"] ** 2 / posterior["chirp_mass"]
+    weights = jacobian * weights
+    result.posterior = posterior.sample(frac=fraction, weights=weights)
+
+    logger.info("Resampling posterior to flat-in-component mass")
+    effective_sample_size = sum(weights)**2 / sum(weights**2)
+    n_posterior = len(posterior)
+    if fraction > effective_sample_size / n_posterior:
+        logger.warning(
+            "Sampling posterior of length {} with fraction {}, but "
+            "effective_sample_size / len(posterior) = {}. This may produce "
+            "biased results"
+            .format(n_posterior, fraction, effective_sample_size / n_posterior)
+        )
+    result.posterior = posterior.sample(frac=fraction, weights=weights, replace=True)
+    result.meta_data["reweighted_to_flat_in_component_mass"] = True
+    return result
 
 
 class Cosmological(Interped):
@@ -229,7 +295,10 @@ class AlignedSpin(Interped):
                       a_prior.minimum * z_prior.maximum)
         chi_max = a_prior.maximum * z_prior.maximum
         xx = np.linspace(chi_min, chi_max, 800)
-        aas = np.linspace(a_prior.minimum, a_prior.maximum, 1000)
+        a_prior_minimum = a_prior.minimum
+        if a_prior_minimum == 0:
+            a_prior_minimum += 1e-32
+        aas = np.linspace(a_prior_minimum, a_prior.maximum, 1000)
         yy = [np.trapz(np.nan_to_num(a_prior.prob(aas) / aas *
                                      z_prior.prob(x / aas)), aas) for x in xx]
         super(AlignedSpin, self).__init__(xx=xx, yy=yy, name=name,
@@ -237,7 +306,61 @@ class AlignedSpin(Interped):
                                           boundary=boundary)
 
 
-class BBHPriorDict(PriorDict):
+class CBCPriorDict(PriorDict):
+    @property
+    def minimum_chirp_mass(self):
+        mass_1 = None
+        mass_2 = None
+        if "chirp_mass" in self:
+            return self["chirp_mass"].minimum
+        elif "mass_1" in self:
+            mass_1 = self['mass_1'].minimum
+            if "mass_2" in self:
+                mass_2 = self['mass_2'].minimum
+            elif "mass_ratio" in self:
+                mass_2 = mass_1 * self["mass_ratio"].minimum
+        if mass_1 is not None and mass_2 is not None:
+            s = generate_mass_parameters(dict(mass_1=mass_1, mass_2=mass_2))
+            return s["chirp_mass"]
+        else:
+            logger.warning("Unable to determine minimum chirp mass")
+            return None
+
+    @property
+    def maximum_chirp_mass(self):
+        mass_1 = None
+        mass_2 = None
+        if "chirp_mass" in self:
+            return self["chirp_mass"].maximum
+        elif "mass_1" in self:
+            mass_1 = self['mass_1'].maximum
+            if "mass_2" in self:
+                mass_2 = self['mass_2'].maximum
+            elif "mass_ratio" in self:
+                mass_2 = mass_1 * self["mass_ratio"].maximum
+        if mass_1 is not None and mass_2 is not None:
+            s = generate_mass_parameters(dict(mass_1=mass_1, mass_2=mass_2))
+            return s["chirp_mass"]
+        else:
+            logger.warning("Unable to determine maximum chirp mass")
+            return None
+
+    @property
+    def minimum_component_mass(self):
+        if "mass_2" in self:
+            return self["mass_2"].minimum
+        if "chirp_mass" in self and "mass_ratio" in self:
+            total_mass = chirp_mass_and_mass_ratio_to_total_mass(
+                self["chirp_mass"].minimum, self["mass_ratio"].minimum)
+            _, mass_2 = total_mass_and_mass_ratio_to_component_masses(
+                self["mass_ratio"].minimum, total_mass)
+            return mass_2
+        else:
+            logger.warning("Unable to determine minimum component mass")
+            return None
+
+
+class BBHPriorDict(CBCPriorDict):
     def __init__(self, dictionary=None, filename=None, aligned_spin=False,
                  conversion_function=None):
         """ Initialises a Prior set for Binary Black holes
@@ -343,7 +466,7 @@ class BBHPriorDict(PriorDict):
         return False
 
 
-class BNSPriorDict(PriorDict):
+class BNSPriorDict(CBCPriorDict):
 
     def __init__(self, dictionary=None, filename=None, aligned_spin=True,
                  conversion_function=None):
@@ -629,3 +752,12 @@ class CalibrationPriorDict(PriorDict):
                                         latex_label=latex_label)
 
         return prior
+
+
+def secondary_mass_condition_function(reference_params, mass_1):
+    return dict(minimum=reference_params['minimum'], maximum=mass_1)
+
+
+ConditionalCosmological = conditional_prior_factory(Cosmological)
+ConditionalUniformComovingVolume = conditional_prior_factory(UniformComovingVolume)
+ConditionalUniformSourceFrame = conditional_prior_factory(UniformSourceFrame)

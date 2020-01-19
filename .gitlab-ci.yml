@@ -24,6 +24,7 @@ stages:
     - python -m pip install .
     - python -c "import bilby"
     - python -c "import bilby.core"
+    - python -c "import bilby.core.prior"
     - python -c "import bilby.core.sampler"
     - python -c "import bilby.gw"
     - python -c "import bilby.gw.detector"
@@ -34,29 +35,15 @@ stages:
           ${script} --help;
       done
 
-# test basic setup on python2
-basic-2.7:
-  <<: *test-python
-  image: python:2.7
-
 # test basic setup on python3
 basic-3.7:
   <<: *test-python
   image: python:3.7
 
-# test example on python 2
-python-2.7:
-  stage: test
-  image: bilbydev/bilby-test-suite-python27
-  script:
-    - python -m pip install .
-    # Run tests without finding coverage
-    - pytest --ignore=test/utils_py3_test.py
-
-# test example on python 3
+# test example on python 3.7
 python-3.7:
   stage: test
-  image: bilbydev/bilby-test-suite-python37
+  image: bilbydev/v2-dockerfile-test-suite-python37
   script:
     - python -m pip install .
 
@@ -79,6 +66,15 @@ python-3.7:
       - coverage_badge.svg
       - docs/_build/html/
 
+# test example on python 3.6
+python-3.6:
+  stage: test
+  image: bilbydev/v2-dockerfile-test-suite-python36
+  script:
+    - python -m pip install .
+
+    - pytest
+
 # Tests run at a fixed schedule rather than on push
 scheduled-python-3.7:
   stage: test
@@ -97,7 +93,6 @@ pages:
   stage: deploy
   dependencies:
     - python-3.7
-    - python-2.7
   script:
     - mkdir public/
     - mv htmlcov/ public/

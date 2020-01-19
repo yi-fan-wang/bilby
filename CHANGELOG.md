@@ -1,5 +1,45 @@
 # All notable changes will be documented in this file
 
+## [0.6.3] 2020-01-03
+### Changed
+- Fixed an issue with the ROQ segment scaling (!690)
+
+## [0.6.2] 2019-12-20
+### Added
+- Introduced conditional prior sets (!332)(!673)(!674)
+- Introduced joint priors (!668)
+- Added a check to make sure sampling time exists before trying to update (!672)
+### Changed
+- Fixed a caching issue with the waveform generators (!630)
+- Fixed an issue that made the dynamic dynesty sampler not work (!667)
+- Changed the backend docker files (!669)
+- Fixed an error when plotting time domain data when using `filtfilt=True`
+- `Interped` priors now dynamically update when new `yy` values are set (!675)
+- Fixed the ROQ scaling checks (!678)
+
+## [0.6.1] 2019-12-02
+
+HotFix release following 0.6.0 fixing a minor bug in the generation of derived
+parameters.
+
+## [0.6.0] 2019-12-02
+### Added
+- A bilby-implemenatation of the dynesty rwalk proposal method (!640)
+- An ACT estimate to the rwalk option (!643)
+- HTML waveform plots and general improvements to the waveform plot (!641, !659)
+- Add a function to resample bilby generated with a uniform in mass ratio and
+  chirp_mass prior to uniform in component mass (!642)
+- Adds checking to the ROQ usage: warning messages generated when out of bounds (!549)
+- A safety check to the time reconstrucion (!633)
+- Added the kombine sampler (!637)
+- Added in-plane spins (!646)
+## Changes
+- Changed the PriorDict base class to from OrderedDict to just dict. This fixes
+  an issue with pickling priors (!652)
+- Improvements to the behaviour of the conversion functions (!647)
+- Prevent chirp mass railing for the GW150914 examples (!635)
+
+
 ## [0.5.9] 2019-10-25
 
 ### Added

@@ -20,10 +20,10 @@ import pandas as pd
 
 logger = logging.getLogger('bilby')
 
-# Constants: values taken from LAL cd65f38ce43cef3a1dec217c060de25caf99bf14
+# Constants: values taken from LAL 505df9dd2e69b4812f1e8eee3a6d468ba7f80674
 speed_of_light = 299792458.0  # m/s
 parsec = 3.085677581491367e+16  # m
-solar_mass = 1.9885469549614615e+30  # Kg
+solar_mass = 1.9884099021470415e+30  # Kg
 radius_of_earth = 6378136.6  # m
 
 _TOL = 14
@@ -59,7 +59,7 @@ def infer_parameters_from_function(func):
     to be removed.
     """
     if isinstance(func, types.MethodType):
-        return _infer_args_from_function_except_n_args(func=func, n=2)
+        return infer_args_from_function_except_n_args(func=func, n=2)
     elif isinstance(func, types.FunctionType):
         return _infer_args_from_function_except_for_first_arg(func=func)
     else:
@@ -77,10 +77,10 @@ def infer_args_from_method(method):
     ---------
     list: A list of strings with the parameters
     """
-    return _infer_args_from_function_except_n_args(func=method, n=1)
+    return infer_args_from_function_except_n_args(func=method, n=1)
 
 
-def _infer_args_from_function_except_n_args(func, n=1):
+def infer_args_from_function_except_n_args(func, n=1):
     """ Inspects a function to find its arguments, and ignoring the
     first n of these, returns a list of arguments from the function's
     signature.
@@ -114,7 +114,7 @@ def _infer_args_from_function_except_n_args(func, n=1):
     >>> def hello(a, b, c, d):
     >>>     pass
     >>>
-    >>> _infer_args_from_function_except_n_args(hello, 2)
+    >>> infer_args_from_function_except_n_args(hello, 2)
     ['c', 'd']
     """
     try:
@@ -126,7 +126,7 @@ def _infer_args_from_function_except_n_args(func, n=1):
 
 
 def _infer_args_from_function_except_for_first_arg(func):
-    return _infer_args_from_function_except_n_args(func=func, n=1)
+    return infer_args_from_function_except_n_args(func=func, n=1)
 
 
 def get_sampling_frequency(time_array):
@@ -979,7 +979,7 @@ class BilbyJsonEncoder(json.JSONEncoder):
         if isinstance(obj, (MultivariateGaussianDist, Prior)):
             return {'__prior__': True, '__module__': obj.__module__,
                     '__name__': obj.__class__.__name__,
-                    'kwargs': dict(obj._get_instantiation_dict())}
+                    'kwargs': dict(obj.get_instantiation_dict())}
         try:
             from astropy import cosmology as cosmo, units
             if isinstance(obj, cosmo.FLRW):
@@ -998,6 +998,8 @@ class BilbyJsonEncoder(json.JSONEncoder):
             return {'__dataframe__': True, 'content': obj.to_dict(orient='list')}
         if inspect.isfunction(obj):
             return {"__function__": True, "__module__": obj.__module__, "__name__": obj.__name__}
+        if inspect.isclass(obj):
+            return {"__class__": True, "__module__": obj.__module__, "__name__": obj.__name__}
         return json.JSONEncoder.default(self, obj)
 
 
@@ -1036,7 +1038,7 @@ def decode_bilby_json(dct):
         return complex(dct["real"], dct["imag"])
     if dct.get("__dataframe__", False):
         return pd.DataFrame(dct['content'])
-    if dct.get("__function__", False):
+    if dct.get("__function__", False) or dct.get("__class__", False):
         default = ".".join([dct["__module__"], dct["__name__"]])
         return getattr(import_module(dct["__module__"]), dct["__name__"], default)
     return dct
